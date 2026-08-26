@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<meta name="theme-color" content="#111013" />
+<title>RESTAURANTE KERO — Sistema de Caixa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div id="login-screen" class="login-screen">
+  <div class="login-art" aria-hidden="true"></div>
+  <div class="login-panel">
+    <div class="brand-mark">
+      <span class="brand-k">K</span>
+      <div>
+        <h1>RESTAURANTE <em>KERO</em></h1>
+        <p>Sistema de Caixa &amp; PDV</p>
+      </div>
+    </div>
+    <form id="login-form" class="login-form" autocomplete="off">
+      <label>Usuário
+        <input type="text" id="login-user" data-testid="login-user-input" placeholder="admin" required />
+      </label>
+      <label>Senha
+        <input type="password" id="login-pass" data-testid="login-pass-input" placeholder="••••••" required />
+      </label>
+      <div id="login-error" class="login-error" data-testid="login-error"></div>
+      <button type="submit" class="btn btn-primary btn-xl" data-testid="login-submit-btn">ENTRAR NO CAIXA</button>
+    </form>
+    <p class="login-hint">Acesso padrão: <b>admin / kero123</b> — altere em Configurações.</p>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app-shell" class="app-shell hidden">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-k small">K</span>
+      <div><strong>KERO</strong><span id="today-label"></span></div>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" data-view="caixa" data-testid="nav-caixa"><span class="ico">▣</span>Caixa</button>
+      <button class="nav-item" data-view="pedidos" data-testid="nav-pedidos"><span class="ico">☰</span>Pedidos do Dia</button>
+      <button class="nav-item" data-view="cardapio" data-testid="nav-cardapio"><span class="ico">✽</span>Cardápio do Dia</button>
+      <button class="nav-item" data-view="produtos" data-testid="nav-produtos"><span class="ico">₪</span>Produtos e Preços</button>
+      <button class="nav-item" data-view="historico" data-testid="nav-historico"><span class="ico">◷</span>Histórico</button>
+      <button class="nav-item" data-view="relatorios" data-testid="nav-relatorios"><span class="ico">◨</span>Relatórios</button>
+      <button class="nav-item" data-view="config" data-testid="nav-config"><span class="ico">⚙</span>Configurações</button>
+    </nav>
+    <button class="btn btn-ghost logout" id="logout-btn" data-testid="logout-btn">Sair</button>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="menu-toggle" id="menu-toggle" data-testid="menu-toggle">☰</button>
+      <h2 id="view-title">Caixa / Novo Pedido</h2>
+      <div class="topbar-right"><span id="clock" class="clock"></span></div>
+    </header>
+
+    <!-- ============ CAIXA ============ -->
+    <section class="view active" id="view-caixa">
+      <div class="caixa-grid">
+        <!-- LEFT -->
+        <div class="col col-left">
+          <div class="card">
+            <div class="card-head"><h3>Categorias</h3></div>
+            <div class="cat-row" id="cat-row"></div>
+          </div>
+          <div class="card grow">
+            <div class="card-head"><h3>Acesso rápido</h3><span class="muted" id="prod-count"></span></div>
+            <div class="prod-grid" id="prod-grid" data-testid="prod-grid"></div>
+          </div>
+        </div>
+
+        <!-- CENTER -->
+        <div class="col col-center">
+          <div class="card grow" id="config-card">
+            <div class="card-head"><h3 id="config-title">Configuração do item</h3></div>
+            <div id="item-config" class="item-config" data-testid="item-config">
+              <div class="empty-state">
+                <div class="empty-icon">▣</div>
+                <p>Selecione um produto à esquerda para montar o item.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT -->
+        <div class="col col-right">
+          <div class="card">
+            <div class="card-head"><h3>Pedido <span id="order-number" class="badge-num">#—</span></h3></div>
+            <div class="order-meta">
+              <div><span class="lbl">Data</span><b id="order-date">—</b></div>
+              <div><span class="lbl">Hora</span><b id="order-time">—</b></div>
+            </div>
+            <input type="text" id="cliente-nome" class="inp" data-testid="cliente-nome-input" placeholder="Nome do cliente (opcional)" />
+          </div>
+          <div class="card grow">
+            <div class="card-head"><h3>Itens</h3><button class="btn btn-mini btn-ghost" id="limpar-pedido" data-testid="limpar-pedido-btn">Limpar</button></div>
+            <div class="order-items" id="order-items" data-testid="order-items"></div>
+          </div>
+          <div class="card totals-card">
+            <div class="tot-line"><span>Subtotal</span><b id="subtotal" data-testid="subtotal">R$ 0,00</b></div>
+            <div class="tot-adj">
+              <label>Desconto <input type="number" step="0.01" min="0" id="desconto" class="inp inp-sm" data-testid="desconto-input" value="0" /></label>
+              <label>Acréscimo <input type="number" step="0.01" min="0" id="acrescimo" class="inp inp-sm" data-testid="acrescimo-input" value="0" /></label>
+            </div>
+            <div class="tot-line total"><span>TOTAL</span><b id="total" data-testid="total">R$ 0,00</b></div>
+
+            <div class="pay-block">
+              <span class="lbl">Forma de pagamento</span>
+              <div class="pay-grid" id="pay-grid"></div>
+              <div id="dinheiro-block" class="dinheiro-block hidden">
+                <label>Valor recebido <input type="number" step="0.01" min="0" id="recebido" class="inp" data-testid="recebido-input" placeholder="0,00" /></label>
+                <div class="troco-line">Troco <b id="troco" data-testid="troco">R$ 0,00</b></div>
+              </div>
+              <label class="status-label">Status
+                <select id="status-pag" class="inp" data-testid="status-select">
+                  <option value="PAGO">Pago</option>
+                  <option value="PENDENTE">Pendente</option>
+                  <option value="FIADO">Fiado</option>
+                </select>
+              </label>
+            </div>
+            <button class="btn btn-primary btn-xl finish" id="finalizar-btn" data-testid="finalizar-btn">FINALIZAR PEDIDO</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PEDIDOS DO DIA ============ -->
+    <section class="view" id="view-pedidos">
+      <div class="card">
+        <div class="card-head"><h3>Pedidos de hoje</h3><span class="muted" id="pedidos-resumo"></span></div>
+        <div class="list" id="pedidos-list" data-testid="pedidos-list"></div>
+      </div>
+    </section>
+
+    <!-- ============ CARDÁPIO ============ -->
+    <section class="view" id="view-cardapio">
+      <div class="card">
+        <div class="card-head"><h3>Cardápio semanal — carnes</h3>
+          <select id="dia-select" class="inp inp-sm" data-testid="dia-select"></select>
+        </div>
+        <div class="two-col">
+          <div>
+            <h4 class="sub">Carnes normais</h4>
+            <div class="list" id="carnes-list" data-testid="carnes-list"></div>
+            <button class="btn btn-outline" id="add-carne" data-testid="add-carne-btn">+ ADICIONAR CARNE</button>
+          </div>
+          <div>
+            <h4 class="sub">Carnes mistas / especiais</h4>
+            <div class="list" id="mistas-list" data-testid="mistas-list"></div>
+            <button class="btn btn-outline" id="add-mista" data-testid="add-mista-btn">+ ADICIONAR MISTA</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Acompanhamentos</h3></div>
+        <div class="list" id="acomp-list" data-testid="acomp-list"></div>
+        <button class="btn btn-outline" id="add-acomp" data-testid="add-acomp-btn">+ ADICIONAR ACOMPANHAMENTO</button>
+      </div>
+    </section>
+
+    <!-- ============ PRODUTOS ============ -->
+    <section class="view" id="view-produtos">
+      <div class="card">
+        <div class="card-head"><h3>Produtos e preços</h3>
+          <button class="btn btn-primary" id="add-produto" data-testid="add-produto-btn">+ NOVO PRODUTO</button>
+        </div>
+        <div id="produtos-groups" data-testid="produtos-groups"></div>
+      </div>
+    </section>
+
+    <!-- ============ HISTÓRICO ============ -->
+    <section class="view" id="view-historico">
+      <div class="card">
+        <div class="card-head"><h3>Histórico por data</h3></div>
+        <div class="list" id="historico-list" data-testid="historico-list"></div>
+      </div>
+    </section>
+
+    <!-- ============ RELATÓRIOS ============ -->
+    <section class="view" id="view-relatorios">
+      <div class="card filters">
+        <div class="filter-row">
+          <label>De <input type="date" id="f-de" class="inp inp-sm" data-testid="filtro-de" /></label>
+          <label>Até <input type="date" id="f-ate" class="inp inp-sm" data-testid="filtro-ate" /></label>
+          <label>Pagamento <select id="f-pag" class="inp inp-sm" data-testid="filtro-pagamento"></select></label>
+          <label>Status <select id="f-status" class="inp inp-sm" data-testid="filtro-status"></select></label>
+          <label>Produto <select id="f-prod" class="inp inp-sm" data-testid="filtro-produto"></select></label>
+          <label>Carne <select id="f-carne" class="inp inp-sm" data-testid="filtro-carne"></select></label>
+          <button class="btn btn-primary" id="aplicar-filtro" data-testid="aplicar-filtro-btn">APLICAR</button>
+          <button class="btn btn-outline" id="print-rel" data-testid="print-relatorio-btn">IMPRIMIR</button>
+          <button class="btn btn-outline" id="exp-json" data-testid="export-json-btn">JSON</button>
+          <button class="btn btn-outline" id="exp-csv" data-testid="export-csv-btn">CSV</button>
+        </div>
+      </div>
+      <div id="relatorio-body" data-testid="relatorio-body"></div>
+    </section>
+
+    <!-- ============ CONFIG ============ -->
+    <section class="view" id="view-config">
+      <div class="card">
+        <div class="card-head"><h3>Configurações do sistema</h3></div>
+        <div class="cfg-grid">
+          <label>Usuário <input type="text" id="cfg-user" class="inp" data-testid="cfg-user" /></label>
+          <label>Senha <input type="text" id="cfg-pass" class="inp" data-testid="cfg-pass" /></label>
+          <label>Divisor de refeições (total ÷ divisor) <input type="number" step="0.01" min="0.01" id="cfg-divisor" class="inp" data-testid="cfg-divisor" /></label>
+          <label>Máx. de carnes por marmita <input type="number" min="1" max="4" id="cfg-maxcarnes" class="inp" data-testid="cfg-maxcarnes" /></label>
+          <label>Próximo nº de pedido <input type="number" min="1" id="cfg-proximo" class="inp" data-testid="cfg-proximo" /></label>
+        </div>
+        <div class="cfg-actions">
+          <button class="btn btn-primary" id="cfg-save" data-testid="cfg-save-btn">SALVAR CONFIGURAÇÕES</button>
+          <button class="btn btn-outline" id="cfg-export" data-testid="cfg-export-btn">EXPORTAR BASE (JSON)</button>
+          <button class="btn btn-danger" id="cfg-reset" data-testid="cfg-reset-btn">RESTAURAR PADRÕES</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Modal genérico -->
+<div class="modal-back hidden" id="modal-back">
+  <div class="modal" id="modal">
+    <div class="modal-head"><h3 id="modal-title">Título</h3><button class="modal-x" id="modal-close" data-testid="modal-close">✕</button></div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<div id="print-area" class="print-area"></div>
+<div id="root" style="display:none"></div>
+
+<script src="js/storage.js"></script>
+<script src="js/impressao.js"></script>
+<script src="js/caixa.js"></script>
+<script src="js/configuracao.js"></script>
+<script src="js/relatorio.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
