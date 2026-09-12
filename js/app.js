@@ -25,6 +25,7 @@
 
   window.KERO = window.KERO || {};
   window.KERO.UI = { toast, modal, closeModal };
+  window.KERO.App = { goTo: (v) => goTo(v) };
 
   /* ================= LOGIN ================= */
   function checkLogin() {
@@ -71,7 +72,7 @@
     document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
     document.querySelectorAll('.view').forEach((s) => s.classList.toggle('active', s.id === 'view-' + view));
     el('view-title').textContent = VIEW_TITLES[view] || '';
-    document.body.classList.remove('sidebar-open');
+    el('sidebar').classList.remove('open');
 
     switch (view) {
       case 'caixa': window.KERO.Caixa.refresh(); break;
@@ -87,7 +88,11 @@
   function wireNav() {
     document.querySelectorAll('.nav-item').forEach((b) => b.onclick = () => goTo(b.dataset.view));
     el('logout-btn').onclick = doLogout;
-    el('menu-toggle').onclick = () => document.body.classList.toggle('sidebar-open');
+    el('menu-toggle').onclick = () => el('sidebar').classList.toggle('open');
+    document.addEventListener('click', (e) => {
+      const sb = el('sidebar');
+      if (sb.classList.contains('open') && !sb.contains(e.target) && e.target !== el('menu-toggle')) sb.classList.remove('open');
+    });
     el('modal-close').onclick = () => closeModal();
     el('modal-back').onclick = (e) => { if (e.target === el('modal-back')) closeModal(); };
   }

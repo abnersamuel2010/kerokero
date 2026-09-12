@@ -1,10 +1,14 @@
- /* caixa.js — tela principal do caixa */
+/* caixa.js — tela principal do caixa */
 (function () {
   const D = () => window.KERO.DB;
   const U = () => window.KERO.UI;
 
-  const state = { itens: [], sel: null, categoria: 'Marmitas', pagamento: null, editIdx: null, numero: null };
+  const state = {
+    itens: [], sel: null, categoria: 'Marmitas', pagamento: null, editIdx: null,
+    numero: null, editingNumero: null
+  };
   const el = (id) => document.getElementById(id);
+  const isFrango = (nome) => /frango/i.test(nome || '');
 
   /* ---------- inicialização ---------- */
   function initCaixa() {
@@ -12,11 +16,27 @@
     el('order-number').textContent = '#' + state.numero;
     el('order-date').textContent = D().isoToBR(D().hojeISO());
     el('order-time').textContent = D().horaAgora();
+    renderAvisoDomingo();
     renderCategorias();
     renderProdutos();
     renderPagamentos();
     renderItens();
     renderConfigVazio();
+  }
+
+  function renderAvisoDomingo() {
+    let box = document.getElementById('aviso-domingo');
+    const grid = document.querySelector('#view-caixa .caixa-grid');
+    if (!grid) return;
+    if (new Date().getDay() === 0) {
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'aviso-domingo';
+        box.className = 'aviso-fechado';
+        box.innerHTML = '⚠ Hoje é domingo — o estabelecimento não abre aos domingos. Você ainda pode usar o sistema normalmente se precisar.';
+        grid.before(box);
+      }
+    } else if (box) box.remove();
   }
 
   function renderCategorias() {
@@ -69,6 +89,14 @@
     renderConfig();
   }
 
+  /* Carnes disponíveis para a marmita selecionada, já aplicando a regra da Marmita Pequena (só frango) */
+  function carnesDisponiveis(dia) {
+    const prod = D().produtoById(state.sel.produtoId);
+    const todas = D().carnesDoDia(dia, true);
+    if (prod && prod.nome === 'Marmita Pequena') return todas.filter((c) => isFrango(c.nome));
+    return todas;
+  }
+
   function precoAuto() {
     const s = state.sel; const prod = D().produtoById(s.produtoId);
     if (!s.marmita) return prod.preco;
@@ -92,12 +120,15 @@
         `<button class="opt ${t.id === s.produtoId ? 'on' : ''}" data-id="${t.id}" data-testid="tam-${slug(t.nome)}">
           ${t.nome.replace('Marmita ', '')}<small>${D().money(t.preco)}</small></button>`).join('')}</div></div>`;
 
-      const carnes = D().carnesDoDia(dia, true);
-      html += `<div><span class="lbl">Carne — ${D().DIAS[dia]} (máx. ${D().cfg().maxCarnes})</span>
+      const isPequena = prod.nome === 'Marmita Pequena';
+      const carnes = carnesDisponiveis(dia);
+      html += `<div><span class="lbl">Carne — ${D().DIAS[dia]} (máx. ${D().cfg().maxCarnes})${isPequena ? ' — só frango nesta marmita' : ''}</span>
         <div class="opt-grid" id="carne-grid">${carnes.length ? carnes.map((c) =>
         `<button class="opt ${s.carnes.indexOf(c.id) > -1 ? 'on' : ''}" data-id="${c.id}" data-testid="carne-${slug(c.nome)}">
-          ${c.nome}<small>${c.tipo === 'mista' ? 'mista ' : ''}${c.adicional > 0 ? '+' + D().money(c.adicional) : 'sem adicional'}</small></button>`).join('')
-        : '<p class="muted">Nenhuma carne ativa hoje. Configure em "Cardápio do Dia".</p>'}</div></div>`;
+          ${c.nome}<small>${c.tipo === 'mista' ? 'especial — precisa de outra carne junto' : (c.adicional > 0 ? '+' + D().money(c.adicional) : 'sem adicional')}</small></button>`).join('')
+        : `<p class="muted">${isPequena ? 'Nenhuma opção de frango ativa hoje.' : 'Nenhuma carne ativa hoje.'} Configure em "Cardápio do Dia".</p>`}</div>
+        ${isPequena ? '<p class="muted" style="margin-top:6px">A Marmita Pequena só acompanha frango (assado, ao molho ou frito). Filé de frango grelhado tem adicional.</p>' : ''}
+      </div>`;
 
       const acomp = D().acompDoDia(dia, true);
       html += `<div><span class="lbl">Acompanhamentos (desmarque o que o cliente não quer)</span>
@@ -133,13 +164,30 @@
     const s = state.sel;
     const g = (id) => el(id);
     if (g('tam-grid')) g('tam-grid').querySelectorAll('.opt').forEach((b) => b.onclick = () => {
-      s.produtoId = b.dataset.id; s.preco = null; renderConfig();
+      s.produtoId = b.dataset.id;
+      const dia = new Date().getDay();
+      // ao trocar de tamanho, remove carnes que não são mais válidas (ex: indo para Pequena, mantém só frango)
+      const validas = carnesDisponiveis(dia).map((c) => c.id);
+      s.carnes = s.carnes.filter((id) => validas.indexOf(id) > -1);
+      s.preco = null; renderConfig();
     });
     if (g('carne-grid')) g('carne-grid').querySelectorAll('.opt').forEach((b) => b.onclick = () => {
+      const dia = new Date().getDay();
+      const disponiveis = carnesDisponiveis(dia);
+      const carneClicada = disponiveis.find((c) => c.id === b.dataset.id);
       const id = b.dataset.id; const i = s.carnes.indexOf(id);
-      if (i > -1) s.carnes.splice(i, 1);
-      else {
+      if (i > -1) {
+        s.carnes.splice(i, 1);
+      } else {
         if (s.carnes.length >= D().cfg().maxCarnes) { U().toast('Máximo de ' + D().cfg().maxCarnes + ' carne(s) por marmita'); return; }
+        // Costela/Feijoada (tipo mista) não podem se combinar entre si — precisam vir com uma carne normal
+        if (carneClicada && carneClicada.tipo === 'mista') {
+          const jaTemMista = s.carnes.some((cid) => {
+            const c = disponiveis.find((x) => x.id === cid);
+            return c && c.tipo === 'mista';
+          });
+          if (jaTemMista) { U().toast('Só é possível escolher uma opção especial (Costela ou Feijoada) por marmita'); return; }
+        }
         s.carnes.push(id);
       }
       s.preco = null; renderConfig();
@@ -167,6 +215,15 @@
     if (!(preco >= 0) || isNaN(preco)) return U().toast('Preço inválido');
     if (!(s.qtd >= 1)) return U().toast('Quantidade inválida');
     const dia = new Date().getDay();
+
+    if (s.marmita) {
+      const carnesSelecionadas = D().carnesDoDia(dia).filter((c) => s.carnes.indexOf(c.id) > -1);
+      const mista = carnesSelecionadas.find((c) => c.tipo === 'mista');
+      if (mista && carnesSelecionadas.length < 2) {
+        return U().toast(mista.nome + ' precisa vir acompanhada de outra carne. Selecione mais uma opção.');
+      }
+    }
+
     const item = {
       uid: D().uid('i'), produtoId: prod.id, nome: prod.nome, categoria: prod.categoria,
       marmita: !!prod.marmita, qtd: s.qtd, precoUnit: preco, precoPadrao: prod.preco,
@@ -234,7 +291,9 @@
       state.pagamento = b.dataset.p;
       el('pay-grid').querySelectorAll('.pay-btn').forEach((x) => x.classList.toggle('on', x === b));
       el('dinheiro-block').classList.toggle('hidden', state.pagamento !== 'DINHEIRO');
-      el('status-pag').value = state.pagamento === 'FIADO' ? 'FIADO' : 'PAGO';
+      el('status-pag').value = state.pagamento === 'FIADO' ? 'PENDENTE' : 'PAGO';
+      el('cliente-nome').placeholder = state.pagamento === 'FIADO' ? 'Nome do cliente (obrigatório p/ fiado)' : 'Nome do cliente (opcional)';
+      el('cliente-nome').classList.toggle('fiado-required', state.pagamento === 'FIADO');
       calcular();
     });
   }
@@ -243,19 +302,35 @@
   function finalizar() {
     if (!state.itens.length) return U().toast('Adicione pelo menos um item ao pedido');
     if (!state.pagamento) return U().toast('Selecione a forma de pagamento');
+    const nomeCliente = el('cliente-nome').value.trim();
+    if (state.pagamento === 'FIADO' && !nomeCliente) return U().toast('Informe o nome do cliente — obrigatório para pedidos fiado');
     const tot = total();
     const recebido = D().num(el('recebido').value);
     if (state.pagamento === 'DINHEIRO' && recebido < tot) return U().toast('Valor recebido menor que o total');
-    const pedido = {
-      numero: state.numero, data: D().hojeISO(), hora: D().horaAgora(),
-      cliente: el('cliente-nome').value.trim(),
+
+    const dadosPedido = {
+      cliente: nomeCliente,
       itens: state.itens, subtotal: subtotal(),
       desconto: D().num(el('desconto').value), acrescimo: D().num(el('acrescimo').value),
       total: tot, pagamento: state.pagamento, status: el('status-pag').value,
       recebido: state.pagamento === 'DINHEIRO' ? recebido : tot,
-      troco: state.pagamento === 'DINHEIRO' ? Math.max(0, recebido - tot) : 0,
-      criadoEm: new Date().toISOString()
+      troco: state.pagamento === 'DINHEIRO' ? Math.max(0, recebido - tot) : 0
     };
+
+    if (state.editingNumero !== null) {
+      D().updatePedido(state.editingNumero, dadosPedido);
+      U().toast('Pedido #' + state.editingNumero + ' atualizado');
+      const numeroEditado = state.editingNumero;
+      state.editingNumero = null;
+      novoPedido();
+      if (window.KERO.App) window.KERO.App.goTo('pedidos');
+      return;
+    }
+
+    const pedido = Object.assign({
+      numero: state.numero, data: D().hojeISO(), hora: D().horaAgora(),
+      assinado: false, criadoEm: new Date().toISOString()
+    }, dadosPedido);
     D().addPedido(pedido);
     U().modal('Pedido #' + pedido.numero + ' finalizado!', `
       <p style="font-size:15px">Total <b style="font-family:var(--font-m)">${D().money(pedido.total)}</b> — ${D().PAG_LABEL[pedido.pagamento]} (${pedido.status})
@@ -269,11 +344,42 @@
   }
 
   function novoPedido() {
-    state.itens = []; state.sel = null; state.pagamento = null; state.editIdx = null;
-    el('cliente-nome').value = ''; el('desconto').value = 0; el('acrescimo').value = 0; el('recebido').value = '';
+    state.itens = []; state.sel = null; state.pagamento = null; state.editIdx = null; state.editingNumero = null;
+    el('cliente-nome').value = ''; el('cliente-nome').placeholder = 'Nome do cliente (opcional)'; el('cliente-nome').classList.remove('fiado-required');
+    el('desconto').value = 0; el('acrescimo').value = 0; el('recebido').value = '';
     el('dinheiro-block').classList.add('hidden');
     el('pay-grid').querySelectorAll('.pay-btn').forEach((x) => x.classList.remove('on'));
+    el('finalizar-btn').textContent = 'FINALIZAR PEDIDO';
     initCaixa();
+  }
+
+  /* ---------- editar pedido já finalizado (chamado a partir de Pedidos do Dia / Histórico) ---------- */
+  function editarPedidoExistente(p) {
+    if (!p) return;
+    state.itens = JSON.parse(JSON.stringify(p.itens));
+    state.numero = p.numero;
+    state.editingNumero = p.numero;
+    state.sel = null; state.editIdx = null;
+    state.pagamento = p.pagamento;
+
+    renderAvisoDomingo();
+    renderCategorias(); renderProdutos();
+    renderPagamentos();
+    el('order-number').textContent = '#' + p.numero + ' (editando)';
+    el('order-date').textContent = D().isoToBR(p.data);
+    el('order-time').textContent = p.hora;
+    el('cliente-nome').value = p.cliente || '';
+    el('cliente-nome').placeholder = p.pagamento === 'FIADO' ? 'Nome do cliente (obrigatório p/ fiado)' : 'Nome do cliente (opcional)';
+    el('desconto').value = p.desconto || 0;
+    el('acrescimo').value = p.acrescimo || 0;
+    el('recebido').value = p.pagamento === 'DINHEIRO' ? (p.recebido || '') : '';
+    el('dinheiro-block').classList.toggle('hidden', p.pagamento !== 'DINHEIRO');
+    el('pay-grid').querySelectorAll('.pay-btn').forEach((b) => b.classList.toggle('on', b.dataset.p === p.pagamento));
+    el('status-pag').value = p.status;
+    el('finalizar-btn').textContent = 'SALVAR ALTERAÇÕES DO PEDIDO #' + p.numero;
+    renderConfigVazio();
+    renderItens();
+    U().toast('Editando pedido #' + p.numero);
   }
 
   function bind() {
@@ -285,5 +391,11 @@
   }
 
   window.KERO = window.KERO || {};
-  window.KERO.Caixa = { init: () => { bind(); initCaixa(); }, novoPedido, refresh: () => { renderCategorias(); renderProdutos(); }, slug };
+  window.KERO.Caixa = {
+    init: () => { bind(); initCaixa(); },
+    novoPedido,
+    editar: editarPedidoExistente,
+    refresh: () => { renderAvisoDomingo(); renderCategorias(); renderProdutos(); },
+    slug
+  };
 })();

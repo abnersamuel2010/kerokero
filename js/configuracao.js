@@ -3,12 +3,12 @@
   const D = () => window.KERO.DB;
   const U = () => window.KERO.UI;
   const el = (id) => document.getElementById(id);
-  let diaSel = new Date().getDay();
+  let diaSel = new Date().getDay() || 1;
 
   /* ================= CARDÁPIO ================= */
   function renderCardapio() {
     const sel = el('dia-select');
-    sel.innerHTML = D().DIAS.map((d, i) => `<option value="${i}" ${i === diaSel ? 'selected' : ''}>${d}</option>`).join('');
+    sel.innerHTML = D().DIAS_UTEIS.map((i) => `<option value="${i}" ${i === diaSel ? 'selected' : ''}>${D().DIAS[i]}</option>`).join('');
     sel.onchange = () => { diaSel = +sel.value; renderCardapio(); };
 
     const rows = (list, testid) => list.length ? list.map((c) => `
@@ -49,7 +49,7 @@
       <label>Tipo <select class="inp" id="k-tipo" data-testid="carne-tipo-select">
         <option value="normal" ${c.tipo === 'normal' ? 'selected' : ''}>Carne normal</option>
         <option value="mista" ${c.tipo === 'mista' ? 'selected' : ''}>Mista / especial</option></select></label>
-      <label>Dia <select class="inp" id="k-dia" data-testid="carne-dia-select">${D().DIAS.map((d, i) => `<option value="${i}" ${i === c.dia ? 'selected' : ''}>${d}</option>`).join('')}</select></label>
+      <label>Dia <select class="inp" id="k-dia" data-testid="carne-dia-select">${D().DIAS_UTEIS.map((i) => `<option value="${i}" ${i === c.dia ? 'selected' : ''}>${D().DIAS[i]}</option>`).join('')}</select></label>
       <label>Status <select class="inp" id="k-ativo" data-testid="carne-status-select">
         <option value="1" ${c.ativo ? 'selected' : ''}>Ativo</option><option value="0" ${!c.ativo ? 'selected' : ''}>Desativado</option></select></label>
       <div class="btn-row"><button class="btn btn-primary" id="k-save" data-testid="carne-save-btn">SALVAR</button></div>`);
@@ -67,7 +67,7 @@
     el('acomp-list').innerHTML = list.length ? list.map((a) => `
       <div class="row ${a.ativo ? '' : 'off'}" data-testid="acomp-row-${a.id}">
         <span class="rname">${a.ordem}. ${a.nome}</span>
-        <span class="rmeta">${(a.dias || []).length === 7 ? 'todos os dias' : (a.dias || []).map((d) => D().DIAS[d].slice(0, 3)).join(', ')}</span>
+        <span class="rmeta">${(a.dias || []).length >= 6 ? 'todos os dias' : (a.dias || []).map((d) => D().DIAS[d].slice(0, 3)).join(', ')}</span>
         <span class="tag ${a.ativo ? 'on' : 'offt'}">${a.ativo ? 'ATIVO' : 'INATIVO'}</span>
         <button class="btn btn-mini btn-ghost" data-t="${a.id}" data-testid="toggle-acomp-${a.id}">${a.ativo ? 'Desativar' : 'Ativar'}</button>
         <button class="btn btn-mini btn-ghost" data-e="${a.id}" data-testid="edit-acomp-${a.id}">Editar</button>
@@ -85,13 +85,13 @@
   }
 
   function formAcomp(a) {
-    const it = a || { nome: '', ordem: D().Acompanhamentos.all().length + 1, ativo: true, dias: [0, 1, 2, 3, 4, 5, 6] };
+    const it = a || { nome: '', ordem: D().Acompanhamentos.all().length + 1, ativo: true, dias: D().DIAS_UTEIS.slice() };
     U().modal(a ? 'Editar acompanhamento' : 'Novo acompanhamento', `
       <label>Nome <input class="inp" id="a-nome" data-testid="acomp-nome-input" value="${it.nome}" /></label>
       <label>Ordem <input type="number" min="1" class="inp" id="a-ordem" data-testid="acomp-ordem-input" value="${it.ordem}" /></label>
       <span class="lbl">Dias em que aparece</span>
-      <div class="opt-grid" id="a-dias">${D().DIAS.map((d, i) =>
-        `<button class="chk ${(it.dias || []).indexOf(i) > -1 ? 'on' : ''}" data-d="${i}" data-testid="acomp-dia-${i}"><span class="box">✓</span>${d.slice(0, 3)}</button>`).join('')}</div>
+      <div class="opt-grid" id="a-dias">${D().DIAS_UTEIS.map((i) =>
+        `<button class="chk ${(it.dias || []).indexOf(i) > -1 ? 'on' : ''}" data-d="${i}" data-testid="acomp-dia-${i}"><span class="box">✓</span>${D().DIAS[i].slice(0, 3)}</button>`).join('')}</div>
       <label>Status <select class="inp" id="a-ativo" data-testid="acomp-status-select">
         <option value="1" ${it.ativo ? 'selected' : ''}>Ativo</option><option value="0" ${!it.ativo ? 'selected' : ''}>Inativo</option></select></label>
       <div class="btn-row"><button class="btn btn-primary" id="a-save" data-testid="acomp-save-btn">SALVAR</button></div>`);
@@ -160,6 +160,7 @@
       <span class="rmeta">${D().PAG_LABEL[p.pagamento]}</span>
       <span class="tag ${p.status.toLowerCase()}">${p.status}</span>
       <button class="btn btn-mini btn-ghost" data-v="${p.numero}" data-testid="ver-pedido-${p.numero}">Ver pedido</button>
+      <button class="btn btn-mini btn-ghost" data-ed="${p.numero}" data-testid="editar-pedido-${p.numero}">Editar</button>
       <button class="btn btn-mini btn-ghost" data-p="${p.numero}" data-testid="imprimir-pedido-${p.numero}">Imprimir</button>
     </div>`;
   }
@@ -167,6 +168,10 @@
   function wirePedidoRows(box) {
     box.querySelectorAll('[data-v]').forEach((b) => b.onclick = () => verPedido(D().pedidoByNumero(b.dataset.v)));
     box.querySelectorAll('[data-p]').forEach((b) => b.onclick = () => window.KERO.Print.pedido(D().pedidoByNumero(b.dataset.p)));
+    box.querySelectorAll('[data-ed]').forEach((b) => b.onclick = () => {
+      window.KERO.Caixa.editar(D().pedidoByNumero(b.dataset.ed));
+      if (window.KERO.App) window.KERO.App.goTo('caixa');
+    });
   }
 
   function renderPedidosDoDia() {
@@ -189,13 +194,15 @@
       <div class="tot-line total"><span>Total</span><b>${D().money(p.total)}</b></div>
       <div class="muted">Pagamento: ${D().PAG_LABEL[p.pagamento]} — Status: ${p.status}${p.troco ? ' — Troco: ' + D().money(p.troco) : ''}</div>
       <label>Alterar status <select class="inp" id="vp-status" data-testid="ver-status-select">
-        ${['PAGO', 'PENDENTE', 'FIADO'].map((s) => `<option ${s === p.status ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+        ${['PAGO', 'PENDENTE'].map((s) => `<option ${s === p.status ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
       <div class="btn-row">
         <button class="btn btn-outline" id="vp-print" data-testid="ver-imprimir-btn">IMPRIMIR</button>
+        <button class="btn btn-outline" id="vp-edit" data-testid="ver-editar-btn">EDITAR PEDIDO</button>
         <button class="btn btn-danger" id="vp-del" data-testid="ver-excluir-btn">EXCLUIR PEDIDO</button>
         <button class="btn btn-primary" id="vp-save" data-testid="ver-salvar-btn">SALVAR STATUS</button>
       </div>`);
     el('vp-print').onclick = () => window.KERO.Print.pedido(p);
+    el('vp-edit').onclick = () => { U().closeModal(); window.KERO.Caixa.editar(p); if (window.KERO.App) window.KERO.App.goTo('caixa'); };
     el('vp-save').onclick = () => { D().updatePedido(p.numero, { status: el('vp-status').value }); U().closeModal(); renderPedidosDoDia(); U().toast('Status atualizado'); };
     el('vp-del').onclick = () => { if (confirm('Excluir pedido #' + p.numero + '?')) { D().removePedido(p.numero); U().closeModal(); renderPedidosDoDia(); renderHistorico(); } };
   }
@@ -225,14 +232,12 @@
   function renderConfig() {
     const c = D().cfg();
     el('cfg-user').value = c.usuario; el('cfg-pass').value = c.senha;
-    el('cfg-divisor').value = c.divisor; el('cfg-maxcarnes').value = c.maxCarnes; el('cfg-proximo').value = c.proximoPedido;
+    el('cfg-divisor').value = c.divisor;
     el('cfg-save').onclick = () => {
       const c2 = D().cfg();
       c2.usuario = el('cfg-user').value.trim() || 'admin';
       c2.senha = el('cfg-pass').value || 'kero123';
       c2.divisor = D().num(el('cfg-divisor').value) || 20;
-      c2.maxCarnes = parseInt(el('cfg-maxcarnes').value, 10) || 2;
-      c2.proximoPedido = parseInt(el('cfg-proximo').value, 10) || 1001;
       D().save(); U().toast('Configurações salvas'); window.KERO.Caixa.novoPedido();
     };
     el('cfg-export').onclick = () => window.KERO.Relatorio.download('kero-base.json', JSON.stringify(D().load(), null, 2), 'application/json');

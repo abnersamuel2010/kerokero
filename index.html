@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" href="img/logo.png" />
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -17,7 +18,10 @@
   <div class="login-art" aria-hidden="true"></div>
   <div class="login-panel">
     <div class="brand-mark">
-      <span class="brand-k">K</span>
+      <span class="brand-k">
+        <img src="img/logo.png" alt="Logo KERO" class="brand-logo-img" onerror="this.style.display='none'" />
+        <span class="brand-k-letter">K</span>
+      </span>
       <div>
         <h1>RESTAURANTE <em>KERO</em></h1>
         <p>Sistema de Caixa &amp; PDV</p>
@@ -41,7 +45,10 @@
 <div id="app-shell" class="app-shell hidden">
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
-      <span class="brand-k small">K</span>
+      <span class="brand-k small">
+        <img src="img/logo.png" alt="Logo KERO" class="brand-logo-img" onerror="this.style.display='none'" />
+        <span class="brand-k-letter">K</span>
+      </span>
       <div><strong>KERO</strong><span id="today-label"></span></div>
     </div>
     <nav class="nav">
@@ -124,7 +131,6 @@
                 <select id="status-pag" class="inp" data-testid="status-select">
                   <option value="PAGO">Pago</option>
                   <option value="PENDENTE">Pendente</option>
-                  <option value="FIADO">Fiado</option>
                 </select>
               </label>
             </div>
@@ -213,9 +219,8 @@
           <label>Usuário <input type="text" id="cfg-user" class="inp" data-testid="cfg-user" /></label>
           <label>Senha <input type="text" id="cfg-pass" class="inp" data-testid="cfg-pass" /></label>
           <label>Divisor de refeições (total ÷ divisor) <input type="number" step="0.01" min="0.01" id="cfg-divisor" class="inp" data-testid="cfg-divisor" /></label>
-          <label>Máx. de carnes por marmita <input type="number" min="1" max="4" id="cfg-maxcarnes" class="inp" data-testid="cfg-maxcarnes" /></label>
-          <label>Próximo nº de pedido <input type="number" min="1" id="cfg-proximo" class="inp" data-testid="cfg-proximo" /></label>
         </div>
+        <p class="muted" style="margin-top:-6px;margin-bottom:14px">O número do próximo pedido é gerado automaticamente pelo sistema.</p>
         <div class="cfg-actions">
           <button class="btn btn-primary" id="cfg-save" data-testid="cfg-save-btn">SALVAR CONFIGURAÇÕES</button>
           <button class="btn btn-outline" id="cfg-export" data-testid="cfg-export-btn">EXPORTAR BASE (JSON)</button>
