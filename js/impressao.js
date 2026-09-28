@@ -25,7 +25,8 @@
       ${p.desconto ? `<div class="r"><span>Desconto</span><span>- ${D().money(p.desconto)}</span></div>` : ''}
       ${p.acrescimo ? `<div class="r"><span>Acréscimo</span><span>+ ${D().money(p.acrescimo)}</span></div>` : ''}
       <div class="r tot"><span>TOTAL</span><span>${D().money(p.total)}</span></div>
-      <div>Pagamento: ${D().PAG_LABEL[p.pagamento]}</div>
+      <div>Pagamento: ${D().PAG_LABEL[p.pagamento] || p.pagamento}</div>
+      ${p.pagamento === 'MULTIPLO' && p.pagamentos ? p.pagamentos.map((sp) => `<div class="r"><span>&nbsp;&nbsp;${D().PAG_LABEL[sp.forma]}</span><span>${D().money(sp.valor)}</span></div>`).join('') : ''}
       <div>Status: ${p.status}</div>
       ${p.troco ? `<div>Recebido: ${D().money(p.recebido)}<br/>Troco: ${D().money(p.troco)}</div>` : ''}
       <div class="sep"></div>

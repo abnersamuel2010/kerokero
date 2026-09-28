@@ -211,6 +211,17 @@ h4.sub{font-family:var(--font-d);font-size:12.5px;text-transform:uppercase;lette
 .pay-btn:hover{border-color:var(--ink)}
 .pay-btn.on{background:linear-gradient(135deg,var(--ink),var(--ink-2));color:#fff;border-color:var(--ink);
   box-shadow:0 6px 16px rgba(17,16,19,.28)}
+#toggle-multi-pag{align-self:flex-start;padding:9px 15px}
+.multi-pag-block{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-sm);padding:13px;display:flex;flex-direction:column;gap:10px}
+.split-rows{display:flex;flex-direction:column;gap:8px}
+.split-row{display:grid;grid-template-columns:1fr 110px 34px;gap:8px;align-items:center}
+.split-row select{padding:9px 11px;font-size:13px}
+.split-row button{width:34px;height:34px;border:1.5px solid var(--line);border-radius:var(--r-sm);background:#fff;font-size:14px}
+.split-row button:hover{border-color:var(--red);color:var(--red)}
+.split-summary{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted);border-top:1px dashed var(--line);padding-top:10px}
+.split-summary b{font-family:var(--font-m);color:var(--txt)}
+.split-ok{color:#127a50;font-weight:700}
+.split-warn{color:var(--red-dark);font-weight:700}
 .dinheiro-block{background:var(--gold-soft);border:1px solid #eed49b;border-radius:var(--r-sm);padding:13px;display:flex;flex-direction:column;gap:10px}
 .troco-line{display:flex;justify-content:space-between;font-weight:700}
 .troco-line b{font-family:var(--font-m);color:var(--green);font-size:18px}

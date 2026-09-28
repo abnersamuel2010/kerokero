@@ -4,7 +4,7 @@
   const DIAS = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
   const DIAS_UTEIS = [1, 2, 3, 4, 5, 6]; // não trabalhamos domingo
   const PAGAMENTOS = ['DINHEIRO', 'PIX', 'PIX_MAQUINA', 'CARTAO', 'FIADO'];
-  const PAG_LABEL = { DINHEIRO: 'Dinheiro', PIX: 'PIX', PIX_MAQUINA: 'PIX Maquininha', CARTAO: 'Cartão (Débito/Crédito)', FIADO: 'Fiado' };
+  const PAG_LABEL = { DINHEIRO: 'Dinheiro', PIX: 'PIX', PIX_MAQUINA: 'PIX Maquininha', CARTAO: 'Cartão (Débito/Crédito)', FIADO: 'Fiado', MULTIPLO: 'Pagamento dividido' };
 
   let uidSeq = 0;
   const uid = (p) => p + '_' + Date.now().toString(36) + '_' + (uidSeq++).toString(36);
@@ -41,7 +41,7 @@
   function seedProdutos() {
     const p = (nome, categoria, preco, marmita) => ({ id: uid('p'), nome, categoria, preco, ativo: true, marmita: !!marmita });
     return [
-      p('Marmita Pequena', 'Marmitas', 15, true),
+      p('Marmita Pequena', 'Marmitas', 16, true),
       p('Marmita Média', 'Marmitas', 20, true),
       p('Marmita Grande', 'Marmitas', 25, true),
       p('Coca-Cola Lata', 'Refrigerantes', 6),
@@ -50,12 +50,19 @@
       p('Coca-Cola 2 L', 'Refrigerantes', 15),
       p('Tubaína (no local)', 'Refrigerantes', 6),
       p('Tubaína (para levar)', 'Refrigerantes', 7),
-      p('Porção Pequena', 'Porções', 0),
-      p('Porção Média', 'Porções', 15),
+      p('Refri (diversos sabores)', 'Refrigerantes', 12),
+      p('Água sem Gás', 'Refrigerantes', 5),
+      p('Água com Gás', 'Refrigerantes', 6),
+      p('Porção Pequena', 'Porções', 15),
+      p('Porção Média', 'Porções', 30),
       p('BF Livre Inteiro', 'Porções', 30),
       p('BF Livre Meia', 'Porções', 20),
       p('Doce Canudo', 'Doces', 7),
-      p('Doce Paçoca', 'Doces', 5)
+      p('Doce Paçoca', 'Doces', 5),
+      p('Doce (diversos sabores)', 'Doces', 5),
+      p('Trufa', 'Doces', 6),
+      p('Salada Pequena', 'Saladas', 8),
+      p('Salada Média', 'Saladas', 12)
     ];
   }
 
@@ -66,6 +73,7 @@
       carnes: seedCarnes(),
       acompanhamentos: seedAcompanhamentos(),
       trocos: {}, // { 'YYYY-MM-DD': valorTrocoInicialDoCaixa }
+      saidas: [], // [{ id, nome, valor, data:'YYYY-MM-DD', hora }] — dinheiro que saiu do caixa
       configuracoes: {
         usuario: 'admin', senha: 'kero123', divisor: 20, maxCarnes: 2, proximoPedido: 1001,
         categorias: ['Marmitas', 'Refrigerantes', 'Porções', 'Doces', 'Saladas', 'Outros']
@@ -74,6 +82,36 @@
   }
 
   let state = null;
+  let migrated = false;
+
+  /* Correções e novos produtos para bases já existentes no navegador do cliente
+     (quem já usava o sistema não deve perder pedidos/histórico ao atualizar). */
+  function migrar() {
+    if (migrated) return;
+    migrated = true;
+    let changed = false;
+    const addSeMissing = (nome, categoria, preco, marmita) => {
+      if (!state.produtos.some((p) => p.nome === nome)) {
+        state.produtos.push({ id: uid('p'), nome, categoria, preco, ativo: true, marmita: !!marmita });
+        changed = true;
+      }
+    };
+    const peq = state.produtos.find((p) => p.nome === 'Marmita Pequena');
+    if (peq && peq.preco === 15) { peq.preco = 16; changed = true; }
+    const porcP = state.produtos.find((p) => p.nome === 'Porção Pequena' && p.categoria === 'Porções');
+    if (porcP && porcP.preco === 0) { porcP.preco = 15; changed = true; }
+    const porcM = state.produtos.find((p) => p.nome === 'Porção Média' && p.categoria === 'Porções');
+    if (porcM && porcM.preco === 15) { porcM.preco = 30; changed = true; }
+    addSeMissing('Refri (diversos sabores)', 'Refrigerantes', 12);
+    addSeMissing('Água sem Gás', 'Refrigerantes', 5);
+    addSeMissing('Água com Gás', 'Refrigerantes', 6);
+    addSeMissing('Doce (diversos sabores)', 'Doces', 5);
+    addSeMissing('Trufa', 'Doces', 6);
+    addSeMissing('Salada Pequena', 'Saladas', 8);
+    addSeMissing('Salada Média', 'Saladas', 12);
+    if (!state.saidas) { state.saidas = []; changed = true; }
+    if (changed) save();
+  }
 
   function load() {
     if (state) return state;
@@ -84,10 +122,11 @@
     const d = defaults();
     Object.keys(d).forEach((k) => { if (state[k] === undefined) state[k] = d[k]; });
     state.configuracoes = Object.assign({}, d.configuracoes, state.configuracoes);
+    migrar();
     return state;
   }
   const save = () => localStorage.setItem(KEY, JSON.stringify(load()));
-  const reset = () => { state = defaults(); save(); };
+  const reset = () => { state = defaults(); migrated = true; save(); };
 
   /* ---------- helpers de domínio ---------- */
   const cfg = () => load().configuracoes;
@@ -129,6 +168,9 @@
     db.pedidos = db.pedidos.filter((p) => p.numero !== +numero); save();
   }
 
+  /* ---------- saídas de caixa (dinheiro que sai: compras, motoboy, retirada, etc.) ---------- */
+  const saidasPeriodo = (de, ate) => (load().saidas || []).filter((s) => (!de || s.data >= de) && (!ate || s.data <= ate));
+
   function crud(colecao) {
     return {
       all: () => load()[colecao],
@@ -150,8 +192,8 @@
     DIAS, DIAS_UTEIS, PAGAMENTOS, PAG_LABEL, uid, load, save, reset, defaults, cfg,
     produtos, produtoById, marmitas, carnesDoDia, acompDoDia,
     nextOrderNumber, addPedido, pedidoByNumero, pedidosPorData, updatePedido, removePedido,
-    getTroco, setTroco,
-    Produtos: crud('produtos'), Carnes: crud('carnes'), Acompanhamentos: crud('acompanhamentos'),
+    getTroco, setTroco, saidasPeriodo,
+    Produtos: crud('produtos'), Carnes: crud('carnes'), Acompanhamentos: crud('acompanhamentos'), Saidas: crud('saidas'),
     money, num, hojeISO, isoToBR, horaAgora
   };
 })();

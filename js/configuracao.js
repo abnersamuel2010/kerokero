@@ -192,7 +192,7 @@
         ${it.acompanhamentos.length ? `<p>Acomp.: ${it.acompanhamentos.join(', ')}</p>` : ''}
         ${it.obs ? `<p>Obs.: <b>${it.obs}</b></p>` : ''}</div>`).join('')}
       <div class="tot-line total"><span>Total</span><b>${D().money(p.total)}</b></div>
-      <div class="muted">Pagamento: ${D().PAG_LABEL[p.pagamento]} — Status: ${p.status}${p.troco ? ' — Troco: ' + D().money(p.troco) : ''}</div>
+      <div class="muted">Pagamento: ${D().PAG_LABEL[p.pagamento] || p.pagamento}${p.pagamento === 'MULTIPLO' && p.pagamentos ? ' (' + p.pagamentos.map((sp) => D().PAG_LABEL[sp.forma] + ': ' + D().money(sp.valor)).join(' + ') + ')' : ''} — Status: ${p.status}${p.troco ? ' — Troco: ' + D().money(p.troco) : ''}</div>
       <label>Alterar status <select class="inp" id="vp-status" data-testid="ver-status-select">
         ${['PAGO', 'PENDENTE'].map((s) => `<option ${s === p.status ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
       <div class="btn-row">

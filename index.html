@@ -123,6 +123,8 @@
             <div class="pay-block">
               <span class="lbl">Forma de pagamento</span>
               <div class="pay-grid" id="pay-grid"></div>
+              <button type="button" class="btn btn-mini btn-outline" id="toggle-multi-pag" data-testid="toggle-multi-pag-btn">+ Dividir em mais de uma forma de pagamento</button>
+              <div id="multi-pag-block" class="multi-pag-block hidden" data-testid="multi-pag-block"></div>
               <div id="dinheiro-block" class="dinheiro-block hidden">
                 <label>Valor recebido <input type="number" step="0.01" min="0" id="recebido" class="inp" data-testid="recebido-input" placeholder="0,00" /></label>
                 <div class="troco-line">Troco <b id="troco" data-testid="troco">R$ 0,00</b></div>

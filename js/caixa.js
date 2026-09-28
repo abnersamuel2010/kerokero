@@ -5,10 +5,16 @@
 
   const state = {
     itens: [], sel: null, categoria: 'Marmitas', pagamento: null, editIdx: null,
-    numero: null, editingNumero: null
+    numero: null, editingNumero: null,
+    multiPag: false, splits: []
   };
   const el = (id) => document.getElementById(id);
   const isFrango = (nome) => /frango/i.test(nome || '');
+
+  /* Preço promocional: qualquer marmita pequena com UMA carne de frango sai por este valor. */
+  const PROMO_PEQUENA_FRANGO = 15;
+  /* Preço fechado quando a marmita leva DUAS carnes juntas (independe de quais sejam). */
+  const PRECO_2_CARNES = { 'Marmita Média': 22, 'Marmita Grande': 25 };
 
   /* ---------- inicialização ---------- */
   function initCaixa() {
@@ -89,11 +95,12 @@
     renderConfig();
   }
 
-  /* Carnes disponíveis para a marmita selecionada, já aplicando a regra da Marmita Pequena (só frango) */
+  /* Carnes disponíveis para a marmita selecionada: a Pequena tem as mesmas carnes normais
+     que a Média/Grande, mas nunca as mistas/especiais (Costela e Feijoada — só em Média e Grande). */
   function carnesDisponiveis(dia) {
     const prod = D().produtoById(state.sel.produtoId);
     const todas = D().carnesDoDia(dia, true);
-    if (prod && prod.nome === 'Marmita Pequena') return todas.filter((c) => isFrango(c.nome));
+    if (prod && prod.nome === 'Marmita Pequena') return todas.filter((c) => c.tipo !== 'mista');
     return todas;
   }
 
@@ -101,8 +108,17 @@
     const s = state.sel; const prod = D().produtoById(s.produtoId);
     if (!s.marmita) return prod.preco;
     const dia = new Date().getDay();
-    const add = D().carnesDoDia(dia).filter((c) => s.carnes.indexOf(c.id) > -1)
-      .reduce((t, c) => t + (Number(c.adicional) || 0), 0);
+    const carnesSel = D().carnesDoDia(dia).filter((c) => s.carnes.indexOf(c.id) > -1);
+
+    // Promoção da casa: Marmita Pequena com UMA carne de frango sai por preço fixo.
+    if (prod.nome === 'Marmita Pequena' && carnesSel.length === 1 && isFrango(carnesSel[0].nome)) {
+      return PROMO_PEQUENA_FRANGO;
+    }
+    // Preço fechado quando a marmita leva duas carnes juntas, independente de quais sejam.
+    if (carnesSel.length === 2 && PRECO_2_CARNES[prod.nome] !== undefined) {
+      return PRECO_2_CARNES[prod.nome];
+    }
+    const add = carnesSel.reduce((t, c) => t + (Number(c.adicional) || 0), 0);
     return (Number(prod.preco) || 0) + add;
   }
 
@@ -122,12 +138,15 @@
 
       const isPequena = prod.nome === 'Marmita Pequena';
       const carnes = carnesDisponiveis(dia);
-      html += `<div><span class="lbl">Carne — ${D().DIAS[dia]} (máx. ${D().cfg().maxCarnes})${isPequena ? ' — só frango nesta marmita' : ''}</span>
+      html += `<div><span class="lbl">Carne — ${D().DIAS[dia]} (máx. ${D().cfg().maxCarnes})${isPequena ? ' — sem opções especiais nesta marmita' : ''}</span>
         <div class="opt-grid" id="carne-grid">${carnes.length ? carnes.map((c) =>
         `<button class="opt ${s.carnes.indexOf(c.id) > -1 ? 'on' : ''}" data-id="${c.id}" data-testid="carne-${slug(c.nome)}">
           ${c.nome}<small>${c.tipo === 'mista' ? 'especial — precisa de outra carne junto' : (c.adicional > 0 ? '+' + D().money(c.adicional) : 'sem adicional')}</small></button>`).join('')
-        : `<p class="muted">${isPequena ? 'Nenhuma opção de frango ativa hoje.' : 'Nenhuma carne ativa hoje.'} Configure em "Cardápio do Dia".</p>`}</div>
-        ${isPequena ? '<p class="muted" style="margin-top:6px">A Marmita Pequena só acompanha frango (assado, ao molho ou frito). Filé de frango grelhado tem adicional.</p>' : ''}
+        : `<p class="muted">Nenhuma carne ativa hoje. Configure em "Cardápio do Dia".</p>`}</div>
+        <p class="muted" style="margin-top:6px">
+          ${isPequena ? 'Promoção: qualquer tipo de frango na Marmita Pequena sai por ' + D().money(PROMO_PEQUENA_FRANGO) + '. ' : ''}
+          ${PRECO_2_CARNES[prod.nome] !== undefined ? 'Com duas carnes juntas, o preço fecha em ' + D().money(PRECO_2_CARNES[prod.nome]) + ', independente da combinação.' : ''}
+        </p>
       </div>`;
 
       const acomp = D().acompDoDia(dia, true);
@@ -282,6 +301,7 @@
     el('total').textContent = D().money(total());
     const rec = D().num(el('recebido').value);
     el('troco').textContent = D().money(Math.max(0, rec - total()));
+    if (state.multiPag) renderMultiPagUI();
   }
 
   function renderPagamentos() {
@@ -296,26 +316,92 @@
       el('cliente-nome').classList.toggle('fiado-required', state.pagamento === 'FIADO');
       calcular();
     });
+    el('toggle-multi-pag').onclick = toggleMultiPag;
+  }
+
+  /* ---------- pagamento dividido em mais de uma forma ---------- */
+  function toggleMultiPag() {
+    state.multiPag = !state.multiPag;
+    el('toggle-multi-pag').textContent = state.multiPag ? '− Usar uma única forma de pagamento' : '+ Dividir em mais de uma forma de pagamento';
+    el('pay-grid').classList.toggle('hidden', state.multiPag);
+    el('multi-pag-block').classList.toggle('hidden', !state.multiPag);
+    el('dinheiro-block').classList.add('hidden');
+    if (state.multiPag) {
+      el('pay-grid').querySelectorAll('.pay-btn').forEach((x) => x.classList.remove('on'));
+      if (!state.splits.length) state.splits = [{ forma: 'DINHEIRO', valor: 0 }, { forma: 'CARTAO', valor: 0 }];
+      state.pagamento = 'MULTIPLO';
+      el('status-pag').value = 'PAGO';
+      renderMultiPagUI();
+    } else {
+      state.pagamento = null;
+    }
+    calcular();
+  }
+
+  function renderMultiPagUI() {
+    const tot = total();
+    const soma = state.splits.reduce((t, s) => t + (Number(s.valor) || 0), 0);
+    const diff = Math.round((tot - soma) * 100) / 100;
+    el('multi-pag-block').innerHTML = `
+      <div class="split-rows" id="split-rows">${state.splits.map((s, i) => `
+        <div class="split-row" data-testid="split-row-${i}">
+          <select class="inp inp-sm" data-i="${i}" data-f="forma" data-testid="split-forma-${i}">
+            ${D().PAGAMENTOS.map((p) => `<option value="${p}" ${p === s.forma ? 'selected' : ''}>${D().PAG_LABEL[p]}</option>`).join('')}
+          </select>
+          <input type="number" step="0.01" min="0" class="inp inp-sm" data-i="${i}" data-f="valor" data-testid="split-valor-${i}" value="${s.valor}" placeholder="0,00" />
+          <button type="button" class="btn btn-mini btn-ghost" data-i="${i}" data-testid="split-remove-${i}">✕</button>
+        </div>`).join('')}</div>
+      <button type="button" class="btn btn-mini btn-outline" id="add-split-row" data-testid="add-split-row-btn">+ Adicionar forma de pagamento</button>
+      <div class="split-summary" data-testid="split-summary">
+        <span>Total do pedido <b>${D().money(tot)}</b></span>
+        <span>Somado <b>${D().money(soma)}</b></span>
+        <span class="${diff === 0 ? 'split-ok' : 'split-warn'}">${diff === 0 ? 'Valores conferem ✓' : (diff > 0 ? 'Falta ' + D().money(diff) : 'Excedeu ' + D().money(-diff))}</span>
+      </div>`;
+    el('split-rows').querySelectorAll('select,input').forEach((inp) => {
+      const handler = (e) => {
+        const i = +e.target.dataset.i, f = e.target.dataset.f;
+        state.splits[i][f] = f === 'valor' ? D().num(e.target.value) : e.target.value;
+        renderMultiPagUI();
+      };
+      inp.oninput = handler; inp.onchange = handler;
+    });
+    el('split-rows').querySelectorAll('[data-testid^="split-remove-"]').forEach((b) => b.onclick = () => {
+      state.splits.splice(+b.dataset.i, 1); renderMultiPagUI();
+    });
+    el('add-split-row').onclick = () => { state.splits.push({ forma: 'DINHEIRO', valor: 0 }); renderMultiPagUI(); };
   }
 
   /* ---------- finalizar ---------- */
   function finalizar() {
     if (!state.itens.length) return U().toast('Adicione pelo menos um item ao pedido');
-    if (!state.pagamento) return U().toast('Selecione a forma de pagamento');
-    const nomeCliente = el('cliente-nome').value.trim();
-    if (state.pagamento === 'FIADO' && !nomeCliente) return U().toast('Informe o nome do cliente — obrigatório para pedidos fiado');
     const tot = total();
+    let pagamentos = null;
+
+    if (state.multiPag) {
+      const splits = state.splits.filter((s) => Number(s.valor) > 0);
+      if (splits.length < 2) return U().toast('Informe pelo menos duas formas de pagamento com valor, ou desative a divisão');
+      const soma = splits.reduce((t, s) => t + Number(s.valor), 0);
+      if (Math.abs(soma - tot) > 0.01) return U().toast('A soma das formas de pagamento (' + D().money(soma) + ') não bate com o total (' + D().money(tot) + ')');
+      pagamentos = splits;
+    } else if (!state.pagamento) {
+      return U().toast('Selecione a forma de pagamento');
+    }
+
+    const nomeCliente = el('cliente-nome').value.trim();
+    const temFiado = state.pagamento === 'FIADO' || (pagamentos || []).some((s) => s.forma === 'FIADO');
+    if (temFiado && !nomeCliente) return U().toast('Informe o nome do cliente — obrigatório para pedidos fiado');
     const recebido = D().num(el('recebido').value);
-    if (state.pagamento === 'DINHEIRO' && recebido < tot) return U().toast('Valor recebido menor que o total');
+    if (!state.multiPag && state.pagamento === 'DINHEIRO' && recebido < tot) return U().toast('Valor recebido menor que o total');
 
     const dadosPedido = {
       cliente: nomeCliente,
       itens: state.itens, subtotal: subtotal(),
       desconto: D().num(el('desconto').value), acrescimo: D().num(el('acrescimo').value),
       total: tot, pagamento: state.pagamento, status: el('status-pag').value,
-      recebido: state.pagamento === 'DINHEIRO' ? recebido : tot,
-      troco: state.pagamento === 'DINHEIRO' ? Math.max(0, recebido - tot) : 0
+      recebido: (!state.multiPag && state.pagamento === 'DINHEIRO') ? recebido : tot,
+      troco: (!state.multiPag && state.pagamento === 'DINHEIRO') ? Math.max(0, recebido - tot) : 0
     };
+    if (pagamentos) dadosPedido.pagamentos = pagamentos;
 
     if (state.editingNumero !== null) {
       D().updatePedido(state.editingNumero, dadosPedido);
@@ -334,6 +420,7 @@
     D().addPedido(pedido);
     U().modal('Pedido #' + pedido.numero + ' finalizado!', `
       <p style="font-size:15px">Total <b style="font-family:var(--font-m)">${D().money(pedido.total)}</b> — ${D().PAG_LABEL[pedido.pagamento]} (${pedido.status})
+      ${pedido.pagamento === 'MULTIPLO' && pedido.pagamentos ? '<br/>' + pedido.pagamentos.map((sp) => D().PAG_LABEL[sp.forma] + ': ' + D().money(sp.valor)).join(' + ') : ''}
       ${pedido.troco ? '<br/>Troco: <b>' + D().money(pedido.troco) + '</b>' : ''}</p>
       <div class="btn-row">
         <button class="btn btn-outline" id="mi-print" data-testid="modal-imprimir-btn">IMPRIMIR PEDIDO</button>
@@ -345,9 +432,14 @@
 
   function novoPedido() {
     state.itens = []; state.sel = null; state.pagamento = null; state.editIdx = null; state.editingNumero = null;
+    state.multiPag = false; state.splits = [];
     el('cliente-nome').value = ''; el('cliente-nome').placeholder = 'Nome do cliente (opcional)'; el('cliente-nome').classList.remove('fiado-required');
     el('desconto').value = 0; el('acrescimo').value = 0; el('recebido').value = '';
     el('dinheiro-block').classList.add('hidden');
+    el('pay-grid').classList.remove('hidden');
+    el('multi-pag-block').classList.add('hidden');
+    el('multi-pag-block').innerHTML = '';
+    el('toggle-multi-pag').textContent = '+ Dividir em mais de uma forma de pagamento';
     el('pay-grid').querySelectorAll('.pay-btn').forEach((x) => x.classList.remove('on'));
     el('finalizar-btn').textContent = 'FINALIZAR PEDIDO';
     initCaixa();
@@ -373,7 +465,14 @@
     el('desconto').value = p.desconto || 0;
     el('acrescimo').value = p.acrescimo || 0;
     el('recebido').value = p.pagamento === 'DINHEIRO' ? (p.recebido || '') : '';
-    el('dinheiro-block').classList.toggle('hidden', p.pagamento !== 'DINHEIRO');
+
+    state.multiPag = p.pagamento === 'MULTIPLO' && Array.isArray(p.pagamentos);
+    state.splits = state.multiPag ? JSON.parse(JSON.stringify(p.pagamentos)) : [];
+    el('toggle-multi-pag').textContent = state.multiPag ? '− Usar uma única forma de pagamento' : '+ Dividir em mais de uma forma de pagamento';
+    el('pay-grid').classList.toggle('hidden', state.multiPag);
+    el('multi-pag-block').classList.toggle('hidden', !state.multiPag);
+    if (state.multiPag) renderMultiPagUI();
+    el('dinheiro-block').classList.toggle('hidden', state.multiPag || p.pagamento !== 'DINHEIRO');
     el('pay-grid').querySelectorAll('.pay-btn').forEach((b) => b.classList.toggle('on', b.dataset.p === p.pagamento));
     el('status-pag').value = p.status;
     el('finalizar-btn').textContent = 'SALVAR ALTERAÇÕES DO PEDIDO #' + p.numero;

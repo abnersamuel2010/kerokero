@@ -3,18 +3,27 @@
   const D = () => window.KERO.DB;
   const el = (id) => document.getElementById(id);
 
+  const SAIDA_MOTIVOS = [
+    'Compra de mercado / insumos', 'Motoboy / Entrega', 'Gás / Botijão', 'Manutenção / Reparo',
+    'Troco extra para o caixa', 'Retirada do proprietário', 'Vale / Adiantamento de funcionário', 'Outro'
+  ];
+
   function filtrar() {
     const de = el('f-de').value, ate = el('f-ate').value;
     const pag = el('f-pag').value, st = el('f-status').value, prod = el('f-prod').value, carne = el('f-carne').value;
     return D().load().pedidos.filter((p) => {
       if (de && p.data < de) return false;
       if (ate && p.data > ate) return false;
-      if (pag && p.pagamento !== pag) return false;
+      if (pag && p.pagamento !== pag && !(p.pagamentos || []).some((sp) => sp.forma === pag)) return false;
       if (st && p.status !== st) return false;
       if (prod && !p.itens.some((i) => i.nome === prod)) return false;
       if (carne && !p.itens.some((i) => (i.carnes || []).some((c) => c.nome === carne))) return false;
       return true;
     });
+  }
+
+  function filtrarSaidas() {
+    return D().saidasPeriodo(el('f-de').value, el('f-ate').value);
   }
 
   function agregar(pedidos) {
@@ -25,10 +34,17 @@
     D().PAGAMENTOS.forEach((p) => r.porPagamento[p] = { total: 0, qtd: 0 });
     pedidos.forEach((p) => {
       r.vendido += p.total;
-      const bucket = r.porPagamento[p.pagamento] || (r.porPagamento[p.pagamento] = { total: 0, qtd: 0 });
-      bucket.total += p.total; bucket.qtd++;
+      if (p.pagamento === 'MULTIPLO' && Array.isArray(p.pagamentos)) {
+        p.pagamentos.forEach((sp) => {
+          const bucket = r.porPagamento[sp.forma] || (r.porPagamento[sp.forma] = { total: 0, qtd: 0 });
+          bucket.total += Number(sp.valor) || 0; bucket.qtd++;
+        });
+      } else {
+        const bucket = r.porPagamento[p.pagamento] || (r.porPagamento[p.pagamento] = { total: 0, qtd: 0 });
+        bucket.total += p.total; bucket.qtd++;
+      }
       if (p.status === 'PAGO') r.recebido += p.total; else r.fiado += p.total;
-      if (p.pagamento === 'FIADO') r.fiados.push(p);
+      if (p.pagamento === 'FIADO' || (p.pagamentos || []).some((sp) => sp.forma === 'FIADO')) r.fiados.push(p);
       p.itens.forEach((i) => {
         r.porProduto[i.nome] = (r.porProduto[i.nome] || 0) + i.qtd;
         r.porCategoria[i.categoria] = (r.porCategoria[i.categoria] || 0) + i.qtd;
@@ -64,6 +80,10 @@
     const vendidoAjustado = Math.max(0, r.vendido - trocoPeriodo);
     const refeicoes = vendidoAjustado / div;
     const maxPag = Math.max(1, ...Object.keys(r.porPagamento).map((k) => r.porPagamento[k].total));
+    const saidas = filtrarSaidas();
+    const totalSaidas = saidas.reduce((t, s) => t + (Number(s.valor) || 0), 0);
+    const porNomeSaida = {};
+    saidas.forEach((s) => porNomeSaida[s.nome] = (porNomeSaida[s.nome] || 0) + (Number(s.valor) || 0));
 
     // troco do dia: só edita diretamente quando o período é um único dia
     const dataUnica = el('f-de').value && el('f-de').value === el('f-ate').value ? el('f-de').value : null;
@@ -96,6 +116,28 @@
         <div class="kpi"><span>Porções</span><b>${r.porCategoria['Porções'] || 0}</b></div>
         <div class="kpi"><span>Doces</span><b>${r.porCategoria['Doces'] || 0}</b></div>
         <div class="kpi"><span>Troco descontado</span><b>${D().money(trocoPeriodo)}</b></div>
+        <div class="kpi"><span>Total de saídas</span><b data-testid="kpi-saidas">${D().money(totalSaidas)}</b></div>
+        <div class="kpi hi"><span>Caixa líquido (recebido − saídas)</span><b data-testid="kpi-caixa-liquido">${D().money(r.recebido - totalSaidas)}</b></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Saídas de caixa</h3><span class="muted">${saidas.length} lançamento(s) — ${D().money(totalSaidas)}</span></div>
+        <div class="filter-row" style="align-items:flex-end">
+          <label style="min-width:230px">Motivo
+            <select class="inp" id="saida-motivo" data-testid="saida-motivo-select">${SAIDA_MOTIVOS.map((m) => `<option>${m}</option>`).join('')}</select>
+          </label>
+          <label style="min-width:190px">Descrição (opcional) <input type="text" class="inp" id="saida-desc" data-testid="saida-desc-input" placeholder="Ex: fornecedor, motoboy..." /></label>
+          <label style="min-width:120px">Valor (R$) <input type="number" step="0.01" min="0" class="inp" id="saida-valor" data-testid="saida-valor-input" /></label>
+          <label style="min-width:150px">Data <input type="date" class="inp" id="saida-data" data-testid="saida-data-input" value="${D().hojeISO()}" /></label>
+          <button class="btn btn-primary" id="saida-add" data-testid="saida-add-btn">REGISTRAR SAÍDA</button>
+        </div>
+        <div class="list" id="saidas-list" data-testid="saidas-list" style="margin-top:14px">${saidas.length ? saidas.slice().reverse().map((s) => `
+          <div class="row" data-testid="saida-row-${s.id}">
+            <span class="rname">${s.nome}</span>
+            <span class="rmeta">${D().isoToBR(s.data)}${s.hora ? ' ' + s.hora : ''}</span>
+            <span class="rmeta">${D().money(s.valor)}</span>
+            <button class="btn btn-mini btn-ghost" data-del-saida="${s.id}" data-testid="del-saida-${s.id}">Excluir</button>
+          </div>`).join('') : '<p class="muted">Nenhuma saída registrada no período.</p>'}</div>
+        ${saidas.length ? `<div style="margin-top:14px">${barChart(porNomeSaida, 'grafico-saidas')}</div>` : ''}
       </div>
       <div class="card">
         <div class="card-head"><h3>Formas de pagamento</h3><span class="muted">gráfico de barras</span></div>
@@ -139,7 +181,22 @@
       render();
     });
 
-    return { pedidos, r, refeicoes, div, trocoPeriodo };
+    el('saida-add').onclick = () => {
+      const motivo = el('saida-motivo').value;
+      const desc = el('saida-desc').value.trim();
+      const valor = D().num(el('saida-valor').value);
+      const data = el('saida-data').value || D().hojeISO();
+      if (!(valor > 0)) return window.KERO.UI.toast('Informe um valor válido para a saída');
+      const nome = desc ? motivo + ' — ' + desc : motivo;
+      D().Saidas.add({ nome, valor, data, hora: D().horaAgora() });
+      window.KERO.UI.toast('Saída registrada');
+      render();
+    };
+    el('relatorio-body').querySelectorAll('[data-del-saida]').forEach((b) => b.onclick = () => {
+      if (confirm('Excluir esta saída?')) { D().Saidas.remove(b.dataset.delSaida); render(); }
+    });
+
+    return { pedidos, r, refeicoes, div, trocoPeriodo, saidas, totalSaidas };
   }
 
   function initFiltros() {
@@ -153,24 +210,34 @@
     el('aplicar-filtro').onclick = render;
     el('print-rel').onclick = printRel;
     el('exp-json').onclick = () => {
-      download('kero-relatorio.json', JSON.stringify({ filtros: { de: el('f-de').value, ate: el('f-ate').value }, resumo: agregar(filtrar()), pedidos: filtrar() }, null, 2), 'application/json');
+      download('kero-relatorio.json', JSON.stringify({
+        filtros: { de: el('f-de').value, ate: el('f-ate').value },
+        resumo: agregar(filtrar()), pedidos: filtrar(), saidas: filtrarSaidas()
+      }, null, 2), 'application/json');
     };
     el('exp-csv').onclick = exportCsv;
   }
 
   function exportCsv() {
-    const rows = [['numero', 'data', 'hora', 'cliente', 'item', 'qtd', 'preco_unit', 'carnes', 'acompanhamentos', 'observacao', 'total_pedido', 'pagamento', 'status']];
+    const detalhePag = (p) => p.pagamento === 'MULTIPLO' && p.pagamentos
+      ? p.pagamentos.map((sp) => D().PAG_LABEL[sp.forma] + ': ' + Number(sp.valor).toFixed(2)).join(' + ')
+      : '';
+    const rows = [['numero', 'data', 'hora', 'cliente', 'item', 'qtd', 'preco_unit', 'carnes', 'acompanhamentos', 'observacao', 'total_pedido', 'pagamento', 'detalhe_pagamento', 'status']];
     filtrar().forEach((p) => p.itens.forEach((i) => rows.push([
       p.numero, p.data, p.hora, p.cliente || '', i.nome, i.qtd, i.precoUnit.toFixed(2),
       (i.carnes || []).map((c) => c.nome).join(' + '), (i.acompanhamentos || []).join(' / '), i.obs || '',
-      p.total.toFixed(2), p.pagamento, p.status
+      p.total.toFixed(2), p.pagamento, detalhePag(p), p.status
     ])));
+    rows.push([]);
+    rows.push(['SAÍDAS DE CAIXA']);
+    rows.push(['nome', 'data', 'hora', 'valor']);
+    filtrarSaidas().forEach((s) => rows.push([s.nome, s.data, s.hora || '', Number(s.valor).toFixed(2)]));
     const csv = rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(';')).join('\n');
     download('kero-relatorio.csv', '\ufeff' + csv, 'text/csv');
   }
 
   function printRel() {
-    const { r, refeicoes, div, trocoPeriodo } = render();
+    const { r, refeicoes, div, trocoPeriodo, saidas, totalSaidas } = render();
     const linhas = (obj) => Object.keys(obj).sort((a, b) => obj[b] - obj[a]).map((k) => `<div class="r"><span>${k}</span><span>${obj[k]}</span></div>`).join('');
     window.KERO.Print.relatorio(`
       <h1>RESTAURANTE KERO</h1>
@@ -182,12 +249,16 @@
       <div class="r"><span>Recebido</span><span>${D().money(r.recebido)}</span></div>
       <div class="r"><span>Fiado/Pendente</span><span>${D().money(r.fiado)}</span></div>
       <div class="r"><span>Troco do período</span><span>${D().money(trocoPeriodo)}</span></div>
+      <div class="r"><span>Saídas de caixa</span><span>${D().money(totalSaidas)}</span></div>
+      <div class="r tot"><span>Caixa líquido</span><span>${D().money(r.recebido - totalSaidas)}</span></div>
       <div class="r"><span>Refeições (÷${div})</span><span>${refeicoes.toFixed(1)}</span></div>
       <div class="sep"></div>
       ${D().PAGAMENTOS.map((k) => `<div class="r"><span>${D().PAG_LABEL[k]}</span><span>${D().money(r.porPagamento[k].total)}</span></div>`).join('')}
       <div class="r tot"><span>TOTAL</span><span>${D().money(r.vendido)}</span></div>
       <div class="sep"></div><div>POR PRODUTO</div>${linhas(r.porProduto)}
       <div class="sep"></div><div>POR CARNE</div>${linhas(r.porCarne)}
+      <div class="sep"></div><div>SAÍDAS DE CAIXA</div>
+      ${saidas.length ? saidas.map((s) => `<div class="r"><span>${s.nome} — ${D().isoToBR(s.data)}</span><span>${D().money(s.valor)}</span></div>`).join('') : '<div class="muted">Nenhuma saída no período.</div>'}
       <div class="sep"></div><div>FIADOS</div>
       ${r.fiados.map((p) => `<div class="r"><span>${p.cliente || '(sem nome)'} #${p.numero}</span><span>${D().money(p.total)} ${p.assinado ? '(assinado)' : '(pendente)'}</span></div>`).join('')}`);
   }
